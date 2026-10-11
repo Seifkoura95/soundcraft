@@ -5,6 +5,9 @@ use crate::{MainWindow, SoundApp};
 use serde_json::{Value, json};
 use soundcraft_engine::catalog;
 
+/// The About item's label (`&'static str`, so chosen at build time like [`crate::APP_NAME`]).
+const ABOUT_APP: &str = if cfg!(feature = "simplehub") { "About Simple Audio" } else { "About SoundCraft" };
+
 /// UI-layer commands: (id, label, catalog path or "", shortcut).
 pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
     ("window.mix", "Mix", "Window > Mix", Some("Cmd+=")),
@@ -19,7 +22,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
     ("window.clip_list_view", "Clip List", "View > Other Displays > Clip List", None),
     ("window.narrow_mix", "Narrow Mix", "View > Narrow Mix", Some("Cmd+Alt+M")),
     ("window.session_info", "Session Info", "", None),
-    ("window.about", "About SoundCraft", "", None),
+    ("window.about", ABOUT_APP, "", None),
     ("window.close", "Close Window", "Window > Close Window", Some("Cmd+W")),
     ("window.hide_floating", "Hide All Floating Windows", "Window > Hide All Floating Windows", Some("Cmd+Ctrl+W")),
     ("window.midi_editor", "MIDI Editor", "Window > MIDI Editor", None),
@@ -185,8 +188,8 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
         .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(22, 22, 23)).inner_margin(egui::Margin::symmetric(8, 2)))
         .show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
-                ui.menu_button("SoundCraft", |ui| {
-                    if ui.button("About SoundCraft").clicked() {
+                ui.menu_button(crate::APP_NAME, |ui| {
+                    if ui.button(ABOUT_APP).clicked() {
                         app.ui.show_about = true;
                     }
                     if ui.button("Session Info").clicked() {
@@ -363,6 +366,10 @@ pub fn invoke_menu(app: &mut SoundApp, id: &str, path: &str) {
         app.ui.audiosuite = p.get("process").and_then(Value::as_str).map(str::to_string);
         return;
     }
+    // Without a file system the file commands go through the host instead of a path prompt.
+    if crate::hostfiles::request(app, id) {
+        return;
+    }
     if wants_dialog(id) && app.dialogs.open_for_command(&app.engine, id) {
         return;
     }
@@ -372,7 +379,7 @@ pub fn invoke_menu(app: &mut SoundApp, id: &str, path: &str) {
 
 /// Keyboard shortcut for a dialog command: open its dialog. Returns true when handled.
 pub fn invoke_shortcut_dialog(app: &mut SoundApp, id: &str) -> bool {
-    wants_dialog(id) && app.dialogs.open_for_command(&app.engine, id)
+    crate::hostfiles::request(app, id) || (wants_dialog(id) && app.dialogs.open_for_command(&app.engine, id))
 }
 
 /// Commands that open a dialog first: the listed ones, Score Setup, and anything that needs a path.

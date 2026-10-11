@@ -118,6 +118,7 @@ fn services() -> Services {
             }
             d.save_file().map(|p| p.to_string_lossy().into_owned())
         })),
+        ..Default::default()
     }
 }
 

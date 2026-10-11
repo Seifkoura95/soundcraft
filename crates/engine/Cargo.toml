@@ -21,6 +21,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 log.workspace = true
+# Single-file session bundles (`bundle`): a stored ZIP out, stored or deflated entries in.
+crc32fast = "1"
+miniz_oxide = "0.8"
 
 [dev-dependencies]
 proptest.workspace = true

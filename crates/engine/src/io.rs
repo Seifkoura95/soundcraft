@@ -439,6 +439,19 @@ pub fn export_clips(e: &Engine, ids: &[soundcraft_model::ClipId], dir: &str) -> 
     Ok(n)
 }
 
+/// `s` as a template (File › Save As Template): its tracks and settings without clips or media.
+pub fn template_of(s: &Session) -> Session {
+    let mut s = s.clone();
+    for t in &mut s.tracks {
+        for pl in &mut t.playlists {
+            pl.clips.clear();
+        }
+    }
+    s.sources.clear();
+    s.videos.clear();
+    s
+}
+
 pub fn sanitize_name(n: &str) -> String {
     let s: String = n.chars().map(|c| if c.is_alphanumeric() || matches!(c, '-' | '_' | ' ' | '.') { c } else { '_' }).collect();
     let s = s.trim().trim_start_matches('.').to_string();

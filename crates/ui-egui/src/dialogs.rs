@@ -238,10 +238,13 @@ pub fn show(app: &mut SoundApp, ctx: &egui::Context) {
                     }
                 }
                 Dialog::Bounce { path, format, bit_depth, normalize } => {
-                    ui.horizontal(|ui| {
-                        ui.label("File");
-                        ui.add(egui::TextEdit::singleline(path).desired_width(360.0));
-                    });
+                    // Through a host the bounce is named after the session; there is no path.
+                    if !crate::hostfiles::active(&app.services) {
+                        ui.horizontal(|ui| {
+                            ui.label("File");
+                            ui.add(egui::TextEdit::singleline(path).desired_width(360.0));
+                        });
+                    }
                     ui.horizontal(|ui| {
                         egui::ComboBox::from_label("Format").selected_text(format.to_uppercase()).show_ui(ui, |ui| {
                             for f in ["wav", "aiff", "flac"] {

@@ -34,11 +34,7 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         cmd!(noundo "session.save_template", "Save As Template...", ["File"], None, "{path}", always, |e, p| {
             let path = str_param(p, "path").ok_or_else(|| bad("session.save_template", "`path` required"))?.to_string();
-            let mut s = e.session().clone();
-            for t in &mut s.tracks { for pl in &mut t.playlists { pl.clips.clear() } }
-            s.sources.clear();
-            s.videos.clear();
-            let text = s.to_json().map_err(|err| EngineError::Io(err.to_string()))?;
+            let text = crate::io::template_of(e.session()).to_json().map_err(|err| EngineError::Io(err.to_string()))?;
             std::fs::write(&path, text).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
             Ok(json!({"path": path}))
         }),
@@ -230,9 +226,20 @@ fn fold_down_param(p: &Value, id: &str) -> Result<bool> {
 
 fn bounce(e: &mut Engine, p: &Value) -> Result<Value> {
     let path = str_param(p, "path").ok_or_else(|| bad("file.bounce_mix", "`path` required"))?.to_string();
+    let (bytes, mut v) = bounce_output(e, p)?;
+    std::fs::write(&path, &bytes).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
+    v["path"] = json!(path);
+    v["bytes"] = json!(bytes.len());
+    Ok(v)
+}
+
+/// The bounce `file.bounce_mix` would write for `p`, without writing it: the encoded file and the
+/// command's result (less `path` and `bytes`). The format comes from `format`, else from the
+/// extension of `path` (which need not exist), else WAV.
+pub fn bounce_output(e: &mut Engine, p: &Value) -> Result<(Vec<u8>, Value)> {
     let r = range_param(e, "file.bounce_mix", p)?;
     let r = if r.is_empty() { soundcraft_time::Range::new(0, e.session().content_end().max(1)) } else { r };
-    let ext = std::path::Path::new(&path).extension().and_then(|x| x.to_str()).unwrap_or("wav").to_ascii_lowercase();
+    let ext = std::path::Path::new(str_param(p, "path").unwrap_or("")).extension().and_then(|x| x.to_str()).unwrap_or("wav").to_ascii_lowercase();
     let format = match str_param(p, "format").unwrap_or(ext.as_str()) {
         "aif" | "aiff" => soundcraft_audio_io::FileFormat::Aiff,
         "flac" => soundcraft_audio_io::FileFormat::Flac,
@@ -247,14 +254,26 @@ fn bounce(e: &mut Engine, p: &Value) -> Result<Value> {
     let normalize = bool_or(p, "normalize", false);
     let fold = fold_down_param(p, "file.bounce_mix")?;
     let (bytes, stats) = crate::io::bounce_bytes_with(e, r, &opts, normalize, fold)?;
-    std::fs::write(&path, &bytes).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
-    Ok(
-        json!({"path": path, "bytes": bytes.len(), "seconds": e.session().sample_rate.seconds(r.len()), "peak_db": stats.0, "lufs": stats.1, "true_peak_db": stats.2}),
-    )
+    let v = json!({"seconds": e.session().sample_rate.seconds(r.len()), "peak_db": stats.0, "lufs": stats.1, "true_peak_db": stats.2});
+    Ok((bytes, v))
 }
 
 /// Write the score of the chosen MIDI tracks as MusicXML (or SVG when `svg`).
 fn write_score(e: &mut Engine, p: &Value, id: &str, svg: bool) -> Result<Value> {
+    let (text, name, mut v) = score_output(e, p, id, svg)?;
+    let path = match str_param(p, "path") {
+        Some(p) => p.to_string(),
+        None => std::env::temp_dir().join(name).to_string_lossy().to_string(),
+    };
+    std::fs::write(&path, &text).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
+    v["path"] = json!(path);
+    Ok(v)
+}
+
+/// The score the Sibelius / Print Score commands write for `p`, without writing it: the MusicXML
+/// (or SVG when `svg`) text, a file name from the score title, and the command's result (less
+/// `path`).
+pub fn score_output(e: &mut Engine, p: &Value, id: &str, svg: bool) -> Result<(String, String, Value)> {
     let tracks = if p.get("tracks").is_some() || p.get("track").is_some() { tracks_param(e, id, p)? } else { Vec::new() };
     let parts = crate::score::layout(e.session(), &tracks);
     if parts.is_empty() {
@@ -262,11 +281,7 @@ fn write_score(e: &mut Engine, p: &Value, id: &str, svg: bool) -> Result<Value> 
     }
     let setup = crate::score::ScoreSetup::from_session(e.session());
     let (text, ext) = if svg { (crate::score::svg(&parts, &setup), "svg") } else { (crate::score::musicxml(&parts, &setup), "musicxml") };
-    let path = match str_param(p, "path") {
-        Some(p) => p.to_string(),
-        None => std::env::temp_dir().join(format!("{}.{ext}", crate::io::sanitize_name(&setup.title))).to_string_lossy().to_string(),
-    };
-    std::fs::write(&path, &text).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
     let measures = parts.iter().map(|p| p.measures.len()).max().unwrap_or(0);
-    Ok(json!({"path": path, "parts": parts.len(), "measures": measures}))
+    let name = format!("{}.{ext}", crate::io::sanitize_name(&setup.title));
+    Ok((text, name, json!({"parts": parts.len(), "measures": measures})))
 }

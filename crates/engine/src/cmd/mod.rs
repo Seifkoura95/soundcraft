@@ -16,6 +16,7 @@ mod edit_more;
 mod event;
 mod event_more;
 mod file;
+pub use file::{bounce_output, score_output};
 mod midi;
 mod mix;
 mod more_util;

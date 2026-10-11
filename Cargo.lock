@@ -3444,7 +3444,9 @@ dependencies = [
 name = "soundcraft-engine"
 version = "0.3.0"
 dependencies = [
+ "crc32fast",
  "log",
+ "miniz_oxide 0.8.9",
  "proptest",
  "serde",
  "serde_json",
@@ -3579,6 +3581,7 @@ version = "0.3.0"
 dependencies = [
  "eframe",
  "egui",
+ "js-sys",
  "log",
  "soundcraft-engine",
  "soundcraft-playback",

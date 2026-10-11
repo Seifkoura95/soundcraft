@@ -491,7 +491,7 @@ fn about(app: &mut SoundApp, ctx: &egui::Context) {
         return;
     }
     let tab_id = egui::Id::new("about_tab");
-    egui::Window::new("About SoundCraft").open(&mut open).default_size(vec2(640.0, 420.0)).collapsible(false).show(ctx, |ui| {
+    egui::Window::new(format!("About {}", crate::APP_NAME)).open(&mut open).default_size(vec2(640.0, 420.0)).collapsible(false).show(ctx, |ui| {
         let mut tab = ui.data_mut(|d| d.get_temp::<u8>(tab_id)).unwrap_or(0);
         ui.horizontal(|ui| {
             for (i, l) in (0u8..).zip(["About", "Contributors", "Models"]) {
@@ -505,6 +505,17 @@ fn about(app: &mut SoundApp, ctx: &egui::Context) {
         match tab {
             1 => crate::credits::contributors_ui(ui),
             2 => crate::credits::models_ui(ui),
+            _ if cfg!(feature = "simplehub") => {
+                // SimpleHub build. SoundCraft is MIT OR Apache-2.0; the licence asks for
+                // attribution, and the ArtCraft marks and community links are left out (the
+                // marks are not open source).
+                ui.label(egui::RichText::new(crate::APP_NAME).font(bold(22.0)));
+                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                ui.label("Multitrack audio recording, editing and mixing for SimpleHub.");
+                ui.add_space(4.0);
+                ui.label("Simple Audio is built on SoundCraft, an open source project by storytold, under the MIT and Apache 2.0 licences.");
+                ui.hyperlink_to("github.com/storytold/soundcraft", "https://github.com/storytold/soundcraft");
+            }
             _ => {
                 ui.label(egui::RichText::new("SoundCraft").font(bold(22.0)));
                 ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));

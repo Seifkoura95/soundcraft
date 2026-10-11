@@ -10,6 +10,7 @@ pub mod dialogs;
 pub mod edit_window;
 pub mod extra_windows;
 pub mod fonts;
+pub mod hostfiles;
 pub mod icons;
 pub mod menus;
 pub mod midi_editor;
@@ -35,6 +36,10 @@ use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 
 pub use control::ControlRequest;
+
+/// The name shown to the user in titles, menus and the About dialog.
+/// The `simplehub` feature builds the app as Simple Audio inside SimpleHub.
+pub const APP_NAME: &str = if cfg!(feature = "simplehub") { "Simple Audio" } else { "SoundCraft" };
 
 /// Which main window is in front (Window › Mix / Edit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -146,11 +151,22 @@ impl Default for UiState {
     }
 }
 
-/// Host services (file dialogs) injected by the app; absent in tests and on the web.
+/// Host services injected by the app; absent in tests and on the standalone web page.
+///
+/// Desktop apps give the file pickers (`pick_open`, `pick_save`), which fill in paths for the
+/// path-based commands. A host without a file system gives the other three instead, and the file
+/// commands run on bytes (see [`hostfiles`]).
 #[derive(Default)]
 pub struct Services {
     pub pick_open: Option<Box<dyn Fn(&str, &[&str]) -> Option<String>>>,
     pub pick_save: Option<Box<dyn Fn(&str, &str) -> Option<String>>>,
+    /// Ask the host for a file for a purpose ([`hostfiles::PURPOSE_OPEN`] and friends); the file
+    /// arrives in `inbox` later (or never, when the user cancels).
+    pub open_async: Option<Box<dyn FnMut(&str)>>,
+    /// Files the host delivered, drained every frame.
+    pub inbox: Option<hostfiles::Inbox>,
+    /// Hand a produced file (name, bytes) to the host: a download, or a cloud save.
+    pub download: Option<Box<dyn FnMut(&str, &[u8])>>,
 }
 
 /// File-system-safe folder name for a plugin id (`clap:com.x.y` → `clap_com.x.y`).
@@ -286,6 +302,9 @@ impl SoundApp {
         if id.starts_with("session.save") || id.starts_with("file.bounce") {
             // Third-party plugins keep state the session can't see: store it first.
             self.capture_plugin_states();
+        }
+        if let Some(r) = hostfiles::run(self, id, &params) {
+            return r;
         }
         match self.engine.execute(id, &params) {
             Ok(v) => {
@@ -691,6 +710,7 @@ impl SoundApp {
         self.last_frame = Some(now);
         self.frame_ms = self.frame_ms * 0.9 + dt * 1000.0 * 0.1;
         control::drain(self, ctx);
+        hostfiles::drain(self);
         self.apply_editor_edits();
         if !ctx.input(|i| i.pointer.any_down()) {
             if matches!(self.gesture, Some(Gesture::Fader { .. })) {
